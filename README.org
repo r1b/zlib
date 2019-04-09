@@ -1,0 +1,40 @@
+* zlib bindings for Chicken Scheme
+zlib is a popular data compression library that uses the DEFLATE
+algorithm internally. It is defined in [[http://tools.ietf.org/html/rfc1950][RFC 1950]].
+
+** Procedures
+These bindings provide two procedures:
+#+BEGIN_EXAMPLE
+(open-zlib-compressed-input-port [INPUT-PORT])
+(open-zlib-compressed-output-port [OUTPUT-PORT])
+#+END_EXAMPLE
+The first is for inflating an existing zlib stream and the second for
+deflating data into a new stream.
+
+** Examples
+*** Inflating a stream:
+#+BEGIN_SRC scheme
+  (with-input-from-port (open-zlib-compressed-input-port)
+    read-string)
+#+END_SRC
+
+*** Deflating a stream:
+#+BEGIN_SRC scheme
+  (with-output-to-port (open-zlib-compressed-output-port)
+    (lambda ()
+      (write-string (read-string))
+      (close-output-port (current-output-port))))  
+#+END_SRC scheme
+
+** Notes
+- This is expecting the zlib format, not raw DEFLATE or the gzip
+  format, which are defined in RFCs 1951 and 1952 respectively.
+- When finished deflating, it is important to always close the zlib
+  output-port. This will ensure that the zlib trailing data is written
+  along with any data still buffered. The destination port will remain
+  open after the zlib port is closed.
+
+** Tasks
+*** TODO expose compression level settings (currently uses level 6, the default)
+*** TODO test on low memory environment (currently uses a hard-coded chunk size of 32k)
+*** TODO improve general efficiency of memory usage

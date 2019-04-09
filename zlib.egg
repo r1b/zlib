@@ -1,0 +1,10 @@
+((license "GPL-3")
+ (category data)
+ (dependencies foreigners miscmacros)
+ (test-dependencies simple-sha1 test)
+ (author "Joseph Gay")
+ (synopsis "Bindings for zlib")
+ (component-options
+   (csc-options "-L" "-lz"))
+ (components
+    (extension zlib)))
