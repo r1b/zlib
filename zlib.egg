@@ -1,7 +1,7 @@
 ((license "GPL-3")
  (category data)
  (dependencies foreigners miscmacros)
- (test-dependencies simple-sha1 test)
+ (test-dependencies simple-sha1 srfi-1 srfi-13 test)
  (author "Joseph Gay")
  (synopsis "Bindings for zlib")
  (component-options
