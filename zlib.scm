@@ -56,6 +56,8 @@
 (define-foreign-variable Z_BEST_SPEED int)
 (define-foreign-variable Z_BEST_COMPRESSION int)
 (define-foreign-variable Z_DEFAULT_COMPRESSION int)
+(define-foreign-variable Z_DEFLATED int)
+(define-foreign-variable Z_DEFAULT_STRATEGY int)
 
 (define-foreign-record-type (z-stream "z_stream")
   (constructor: make-z-stream)
@@ -75,14 +77,15 @@
   (unsigned-long adler z-stream-adler)
   (unsigned-long reserved reserved))
 
-(define inflate-init (foreign-lambda int "inflateInit" z-stream))
+(define inflate-init (foreign-lambda int "inflateInit2" z-stream int))
 (define inflate (foreign-lambda int "inflate" z-stream int))
 (define inflate-end (foreign-lambda void "inflateEnd" z-stream))
 
 (define (z-abort type)
   (abort (make-property-condition 'z-error 'type type)))
 
-(define (open-zlib-compressed-input-port #!optional (port (current-input-port)))
+(define (open-zlib-compressed-input-port #!optional (port (current-input-port))
+                                         #!key (window-bits 15))
   (let ((ret #f)
         (stream (make-z-stream))
         (in (make-string chunk))
@@ -95,7 +98,7 @@
     (z-stream-opaque-set! stream #f)
     (z-stream-avail-in-set! stream 0)
     (z-stream-next-in-set! stream #f)
-    (set! ret (inflate-init stream))
+    (set! ret (inflate-init stream window-bits))
     (if (not (= Z_OK ret)) (z-abort ret)
         (make-input-port
          (lambda ()
@@ -136,11 +139,16 @@
            (unless eof? ; free up memory
              (inflate-end stream)))))))
 
-(define deflate-init (foreign-lambda int "deflateInit" z-stream int))
+(define deflate-init (foreign-lambda int "deflateInit2" z-stream int int int int int))
 (define deflate (foreign-lambda int "deflate" z-stream int))
 (define deflate-end (foreign-lambda void "deflateEnd" z-stream))
 
-(define (open-zlib-compressed-output-port #!optional (port (current-output-port)))
+(define (open-zlib-compressed-output-port #!optional (port (current-output-port))
+                                          #!key (level -1)
+                                                (method Z_DEFLATED)
+                                                (window-bits 15)
+                                                (mem-level 8)
+                                                (strategy Z_DEFAULT_STRATEGY))
   (let ((ret #f)
         (stream (make-z-stream))
         (flush Z_NO_FLUSH)
@@ -149,7 +157,7 @@
     (z-stream-z-alloc-set! stream #f)
     (z-stream-z-free-set! stream #f)
     (z-stream-opaque-set! stream #f)
-    (set! ret (deflate-init stream Z_DEFAULT_COMPRESSION))
+    (set! ret (deflate-init stream level method window-bits mem-level strategy))
     (define (write-collected)
       (let ((avail-in (string-length collected-in)))
         (z-stream-avail-in-set! stream avail-in)
