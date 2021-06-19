@@ -144,7 +144,7 @@
 (define deflate-end (foreign-lambda void "deflateEnd" z-stream))
 
 (define (open-zlib-compressed-output-port #!optional (port (current-output-port))
-                                          #!key (level -1)
+                                          #!key (level Z_DEFAULT_COMPRESSION)
                                                 (method Z_DEFLATED)
                                                 (window-bits 15)
                                                 (mem-level 8)
