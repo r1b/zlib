@@ -59,6 +59,7 @@
 (define-foreign-variable Z_DEFLATED int)
 (define-foreign-variable Z_DEFAULT_STRATEGY int)
 (define-foreign-variable Z_MAX_WBITS int)
+(define-foreign-variable Z_MAX_MEM_LEVEL int)
 
 (define-foreign-record-type (z-stream "z_stream")
   (constructor: make-z-stream)
@@ -148,7 +149,7 @@
                                           #!key (level Z_DEFAULT_COMPRESSION)
                                                 (method Z_DEFLATED)
                                                 (window-bits (- Z_MAX_WBITS))
-                                                (mem-level 8)
+                                                (mem-level Z_MAX_MEM_LEVEL)
                                                 (strategy Z_DEFAULT_STRATEGY))
   (let ((ret #f)
         (stream (make-z-stream))
