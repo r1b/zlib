@@ -58,6 +58,7 @@
 (define-foreign-variable Z_DEFAULT_COMPRESSION int)
 (define-foreign-variable Z_DEFLATED int)
 (define-foreign-variable Z_DEFAULT_STRATEGY int)
+(define-foreign-variable Z_MAX_WBITS int)
 
 (define-foreign-record-type (z-stream "z_stream")
   (constructor: make-z-stream)
@@ -85,7 +86,7 @@
   (abort (make-property-condition 'z-error 'type type)))
 
 (define (open-zlib-compressed-input-port #!optional (port (current-input-port))
-                                         #!key (window-bits 15))
+                                         #!key (window-bits (- Z_MAX_WBITS)))
   (let ((ret #f)
         (stream (make-z-stream))
         (in (make-string chunk))
@@ -146,7 +147,7 @@
 (define (open-zlib-compressed-output-port #!optional (port (current-output-port))
                                           #!key (level Z_DEFAULT_COMPRESSION)
                                                 (method Z_DEFLATED)
-                                                (window-bits 15)
+                                                (window-bits (- Z_MAX_WBITS))
                                                 (mem-level 8)
                                                 (strategy Z_DEFAULT_STRATEGY))
   (let ((ret #f)
