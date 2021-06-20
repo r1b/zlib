@@ -86,7 +86,7 @@
 (define (z-abort type)
   (abort (make-property-condition 'z-error 'type type)))
 
-(define (open-zlib-compressed-input-port #!optional (port (current-input-port))
+(define (open-zlib-compressed-input-port port
                                          #!key (window-bits (- MAX_WBITS)))
   (let ((ret #f)
         (stream (make-z-stream))
@@ -145,7 +145,7 @@
 (define deflate (foreign-lambda int "deflate" z-stream int))
 (define deflate-end (foreign-lambda void "deflateEnd" z-stream))
 
-(define (open-zlib-compressed-output-port #!optional (port (current-output-port))
+(define (open-zlib-compressed-output-port port
                                           #!key (level Z_DEFAULT_COMPRESSION)
                                                 (method Z_DEFLATED)
                                                 (window-bits (- MAX_WBITS))
