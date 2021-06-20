@@ -159,6 +159,7 @@
     (z-stream-z-alloc-set! stream #f)
     (z-stream-z-free-set! stream #f)
     (z-stream-opaque-set! stream #f)
+    (assert (<= mem-level MAX_MEM_LEVEL) (error "invalid mem-level"))
     (set! ret (deflate-init stream level method window-bits mem-level strategy))
     (define (write-collected)
       (let ((avail-in (string-length collected-in)))
