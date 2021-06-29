@@ -24,7 +24,8 @@
 (module zlib
 
 (open-zlib-compressed-input-port
- open-zlib-compressed-output-port)
+ open-zlib-compressed-output-port
+ zlib/max-wbits)
 
 (import (chicken base)
         (chicken condition)
@@ -60,6 +61,8 @@
 (define-foreign-variable Z_DEFAULT_STRATEGY int)
 (define-foreign-variable MAX_WBITS int)
 (define-foreign-variable MAX_MEM_LEVEL int)
+
+(define zlib/max-wbits MAX_WBITS)
 
 (define-foreign-record-type (z-stream "z_stream")
   (constructor: make-z-stream)
