@@ -21,6 +21,8 @@
 ;; zlib: Copyright (C) 1995-2010 Jean-loup Gailly and Mark Adler
 ;; see http://zlib.net/zlib_license.html
 
+;; https://zlib.net/zlib_how.html
+
 (module zlib
 
 (open-zlib-compressed-input-port
@@ -39,9 +41,7 @@
 #include <zlib.h>
 <#
 
-;; if this is set a lot higher, it will segfault
-;; if it is set a little higher, it may cause heap issues
-(define chunk #x5000)
+(define *buffer-size* (* 16 1024)) ; 16KiB
 
 (define-foreign-variable Z_OK int)
 (define-foreign-variable Z_NULL int)
@@ -86,107 +86,128 @@
 (define (z-abort type)
   (abort (make-property-condition 'z-error 'type type)))
 
-(define (open-zlib-compressed-input-port port
+(define (open-zlib-compressed-input-port input-port
                                          #!key (window-bits (- MAX_WBITS)))
-  (let ((ret #f)
-        (stream (make-z-stream))
-        (in (make-string chunk))
-        (out (make-string chunk))
-        (bytes-avail "")
-        (pos 0)
-        (eof? #f))
-    (z-stream-z-alloc-set! stream #f)
-    (z-stream-z-free-set! stream #f)
-    (z-stream-opaque-set! stream #f)
-    (z-stream-avail-in-set! stream 0)
-    (z-stream-next-in-set! stream #f)
-    (set! ret (inflate-init stream window-bits))
-    (if (not (= Z_OK ret)) (z-abort ret)
+  (let ((zlib-last-ret #f)
+        (zlib-stream (make-z-stream))
+        (zlib-input-buffer (make-string *buffer-size*))
+        (zlib-output-buffer (make-string *buffer-size*))
+        (port-bytes-available "")
+        (port-position 0)
+        (port-eof? #f)
+	(total-decompressed-bytes 0))
+    (z-stream-z-alloc-set! zlib-stream #f)
+    (z-stream-z-free-set! zlib-stream #f)
+    (z-stream-opaque-set! zlib-stream #f)
+    (z-stream-avail-in-set! zlib-stream 0)
+    (z-stream-next-in-set! zlib-stream #f)
+    (set! zlib-last-ret (inflate-init zlib-stream window-bits))
+    (if (not (= Z_OK zlib-last-ret)) (z-abort zlib-last-ret)
         (make-input-port
+	 ; read-char
          (lambda ()
-           (when (>= pos (string-length bytes-avail))
+           (when (>= port-position (string-length port-bytes-available))
              (begin
-               (set! pos 0)
-               (set! bytes-avail "")
-               (z-stream-avail-in-set! stream (read-string! chunk in port))
-               (if (or (= 0 (z-stream-avail-in stream))
-                       (= Z_STREAM_END ret))
-                   (begin (inflate-end stream) (set! eof? #t))
+               (set! port-position 0)
+               (set! port-bytes-available "")
+               (z-stream-avail-in-set! zlib-stream
+				       (read-string! *buffer-size*
+						     zlib-input-buffer
+						     input-port))
+               (if (or (= 0 (z-stream-avail-in zlib-stream))
+                       (= Z_STREAM_END zlib-last-ret))
+                   (begin (inflate-end zlib-stream) (set! port-eof? #t))
                    (begin
-                     (z-stream-next-in-set! stream #$in)
-                     (z-stream-avail-out-set! stream 0)
-                     (while (= 0 (z-stream-avail-out stream))
-                       (z-stream-avail-out-set! stream chunk)
-                       (z-stream-next-out-set! stream #$out)
-                       (set! ret (inflate stream Z_NO_FLUSH))
-                       (assert (not (= Z_STREAM_ERROR ret)) "state clobbered")
-                       (when (or (= Z_NEED_DICT ret)
-                                 (= Z_DATA_ERROR ret)
-                                 (= Z_MEM_ERROR ret))
-                         (set! ret (if (= Z_NEED_DICT ret) Z_DATA_ERROR ret))
-                         (inflate-end stream)
-                         (z-abort ret))
-                       (set! bytes-avail
-                             (string-append bytes-avail
-                                            (substring out 0 (- chunk (z-stream-avail-out stream))))))))))
-           (if eof? #!eof
-               (begin 
-                 (set! pos (add1 pos))
-                 (string-ref bytes-avail (sub1 pos)))))
+                     (z-stream-next-in-set! zlib-stream #$zlib-input-buffer)
+                     (z-stream-avail-out-set! zlib-stream 0)
+                     (while (= 0 (z-stream-avail-out zlib-stream))
+                       (z-stream-avail-out-set! zlib-stream *buffer-size*)
+                       (z-stream-next-out-set! zlib-stream #$zlib-output-buffer)
+                       (set! zlib-last-ret (inflate zlib-stream Z_NO_FLUSH))
+                       (assert (not (= Z_STREAM_ERROR zlib-last-ret)) "state clobbered")
+                       (when (or (= Z_NEED_DICT zlib-last-ret)
+                                 (= Z_DATA_ERROR zlib-last-ret)
+                                 (= Z_MEM_ERROR zlib-last-ret))
+                         (set! zlib-last-ret (if (= Z_NEED_DICT zlib-last-ret)
+						 Z_DATA_ERROR
+						 zlib-last-ret))
+                         (inflate-end zlib-stream)
+                         (z-abort zlib-last-ret))
+		       (let* ((num-decompressed-bytes (- *buffer-size*
+							  (z-stream-avail-out zlib-stream)))
+			      (decompressed-bytes (substring zlib-output-buffer
+						       0
+						       num-decompressed-bytes)))
+			   (set! port-bytes-available
+			     (string-append port-bytes-available decompressed-bytes))))))))
+           (if port-eof? #!eof
+	       (let ((last-port-position port-position))
+		 (begin 
+		   (set! port-position (add1 last-port-position))
+		   (string-ref port-bytes-available last-port-position)))))
+	 ; char-ready?
          (lambda ()
-           (not eof?))
+           (not port-eof?))
+	 ; close
          (lambda ()
-           (unless (= ret Z_STREAM_END)
+           (unless (= zlib-last-ret Z_STREAM_END)
              (warning "~A\n" "not finished with inflate"))
-           (unless eof? ; free up memory
-             (inflate-end stream)))))))
+           (unless port-eof? ; free up memory
+             (inflate-end zlib-stream)))))))
 
 (define deflate-init (foreign-lambda int "deflateInit2" z-stream int int int int int))
 (define deflate (foreign-lambda int "deflate" z-stream int))
 (define deflate-end (foreign-lambda void "deflateEnd" z-stream))
 
-(define (open-zlib-compressed-output-port port
+(define (open-zlib-compressed-output-port output-port
                                           #!key (level Z_DEFAULT_COMPRESSION)
                                                 (method Z_DEFLATED)
                                                 (window-bits (- MAX_WBITS))
                                                 (mem-level MAX_MEM_LEVEL)
                                                 (strategy Z_DEFAULT_STRATEGY))
-  (let ((ret #f)
-        (stream (make-z-stream))
-        (flush Z_NO_FLUSH)
-        (out (make-string chunk))
-        (collected-in ""))
-    (z-stream-z-alloc-set! stream #f)
-    (z-stream-z-free-set! stream #f)
-    (z-stream-opaque-set! stream #f)
+  (let ((zlib-last-ret #f)
+        (zlib-stream (make-z-stream))
+        (zlib-flush Z_NO_FLUSH)
+        (zlib-output-buffer (make-string *buffer-size*))
+        (port-bytes-collected ""))
+    (z-stream-z-alloc-set! zlib-stream #f)
+    (z-stream-z-free-set! zlib-stream #f)
+    (z-stream-opaque-set! zlib-stream #f)
     (assert (<= mem-level MAX_MEM_LEVEL) (error "invalid mem-level"))
-    (set! ret (deflate-init stream level method window-bits mem-level strategy))
+    (set! zlib-last-ret (deflate-init zlib-stream level method window-bits mem-level strategy))
     (define (write-collected)
-      (let ((avail-in (string-length collected-in)))
-        (z-stream-avail-in-set! stream avail-in)
-        (unless (= 0 (string-length collected-in))
-          (z-stream-next-in-set! stream #$collected-in))
-        (z-stream-avail-out-set! stream 0)
-        (while (= 0 (z-stream-avail-out stream))
-          (z-stream-avail-out-set! stream chunk)
-          (z-stream-next-out-set! stream #$out)
-          (set! ret (deflate stream flush))
-          (assert (not (= Z_STREAM_ERROR ret)) "state clobbered")
-          (write-string (substring out 0 (- chunk (z-stream-avail-out stream))) #f port))
-        (assert (= 0 (z-stream-avail-in stream)) "could not process all input")
-        (set! collected-in "")))
-    (if (not (= Z_OK ret)) (z-abort ret)
+      (let ((avail-in (string-length port-bytes-collected)))
+        (z-stream-avail-in-set! zlib-stream avail-in)
+        (unless (= 0 avail-in)
+          (z-stream-next-in-set! zlib-stream #$port-bytes-collected))
+        (z-stream-avail-out-set! zlib-stream 0)
+        (while (= 0 (z-stream-avail-out zlib-stream))
+          (z-stream-avail-out-set! zlib-stream *buffer-size*)
+          (z-stream-next-out-set! zlib-stream #$zlib-output-buffer)
+          (set! zlib-last-ret (deflate zlib-stream zlib-flush))
+          (assert (not (= Z_STREAM_ERROR zlib-last-ret)) "state clobbered")
+	  (let* ((num-compressed-bytes (- *buffer-size* (z-stream-avail-out zlib-stream)))
+		 (compressed-bytes (substring zlib-output-buffer
+					     0
+					     num-compressed-bytes)))
+	    (write-string compressed-bytes #f output-port)))
+        (assert (= 0 (z-stream-avail-in zlib-stream)) "could not process all input")
+        (set! port-bytes-collected "")))
+    (if (not (= Z_OK zlib-last-ret)) (z-abort zlib-last-ret)
         (make-output-port
-         (lambda (in)
-           (set! collected-in (string-append collected-in in))
-           (when (>= (string-length collected-in) chunk)
+	 ; write
+         (lambda (bytes-written)
+           (set! port-bytes-collected (string-append port-bytes-collected bytes-written))
+           (when (>= (string-length port-bytes-collected) *buffer-size*)
              (write-collected)))
+	 ; close
          (lambda ()
-           (when (port-closed? port) (error "could not finish deflate, destination port closed"))
-           (set! flush Z_FINISH)
+           (when (port-closed? output-port)
+	     (error "could not finish deflate, destination port closed"))
+           (set! zlib-flush Z_FINISH)
            (write-collected)
-           (assert (= ret Z_STREAM_END) "could not write stream end")
-           (deflate-end stream)
-           (flush-output port))))))
+           (assert (= zlib-last-ret Z_STREAM_END) "could not write stream end")
+           (deflate-end zlib-stream)
+           (flush-output output-port))))))
 
 )
