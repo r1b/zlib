@@ -62,11 +62,14 @@
    (test-assert "initialize" (= (file-size in-file) (* #x100 #x2000)))
    (set! sha1 (sha1sum in-file))
    (with-input-from-file in-file
-     (lambda () (with-output-to-port (open-zlib-compressed-output-port (open-output-file deflate-file))
+     (lambda ()
+       (call-with-output-file deflate-file
+         (lambda (of)
+           (with-output-to-port (open-zlib-compressed-output-port of)
              (lambda ()
                (write-string (read-string) #f)
                (close-output-port (current-output-port))
-               (close-input-port (current-input-port))))))
+               (close-input-port (current-input-port))))))))
    (test-assert "deflate" (> (file-size deflate-file) #x100000))
    (with-output-to-file in-file
      (lambda () (with-input-from-port (open-zlib-compressed-input-port (open-input-file deflate-file))
