@@ -31,6 +31,7 @@
         (chicken io)
         (chicken foreign)
         (chicken port)
+        (chicken gc)
         foreigners
         miscmacros
         scheme)
@@ -118,6 +119,7 @@
                      (while (= 0 (z-stream-avail-out stream))
                        (z-stream-avail-out-set! stream chunk)
                        (z-stream-next-out-set! stream #$out)
+                       (gc #t)
                        (set! ret (inflate stream Z_NO_FLUSH))
                        (assert (not (= Z_STREAM_ERROR ret)) "state clobbered")
                        (when (or (= Z_NEED_DICT ret)
@@ -170,6 +172,7 @@
         (while (= 0 (z-stream-avail-out stream))
           (z-stream-avail-out-set! stream chunk)
           (z-stream-next-out-set! stream #$out)
+          (gc #t)
           (set! ret (deflate stream flush))
           (assert (not (= Z_STREAM_ERROR ret)) "state clobbered")
           (write-string (substring out 0 (- chunk (z-stream-avail-out stream))) #f port))
